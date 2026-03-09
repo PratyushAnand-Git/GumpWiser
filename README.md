@@ -49,12 +49,7 @@ This project was rapidly prototyped and developed using modern "Vibe Coding" pri
 
 ---
 
-## 🎬 2-Minute Video Demo Script
-If you are recording the Devpost Pitch, follow this script:
-1. **[0:00 - 0:30] Introduction & Problem:** "Welcome to GumpWiser. We solve the problem of local misinformation in Montgomery by giving citizens a real-time 'Reality Check'. We use the **Bright Data Scraper** to pull initial trending rumors directly from local social media."
-2. **[0:30 - 1:00] Verify a Fact:** "Let's test a rumor. I'll type *'pothole road repair near the Capitol'*. GumpWiser uses Gemini 1.5 Flash to cross-reference this instantly against the **Montgomery Open Data Portal** 311 records. As you can see, it returns a 95% Verified Fact with the exact case details!"
-3. **[1:00 - 1:30] Debunk a Rumor:** "Now let's test a fake rumor: *'huge massive sinkhole explosion on Commerce Street'*. The AI checks the City Data and our Bright Data Web Scraper layer. Finding zero evidence, it flags this as a 12% Misinformation Alert!"
-4. **[1:30 - 2:00] The Fallback Architecture:** "Finally, because municipal APIs can go down, we engineered a Resilient Fallback Engine. If the ArcGIS server crashes, GumpWiser instantly routes to a local cached structure to guarantee uptime. Thank you to Bright Data and Google AI Studio for powering GumpWiser!"
+
 
 ---
 
