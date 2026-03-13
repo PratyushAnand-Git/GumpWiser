@@ -1,137 +1,258 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
-import { verifyRumorWithBrightData } from '@/lib/brightData';
+import { verifyRumorWithBrightData, scrapeSocialSignals } from '@/lib/brightData';
 
-// Initialize SDK (might fail if key is invalid, so we use a try-catch pattern later)
-const apiKey = process.env.GEMINI_API_KEY || '';
-const genAI = new GoogleGenerativeAI(apiKey);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-// Real Montgomery 311 Open Data ArcGIS Hub URL (sometimes goes down or returns 404)
-const MONTGOMERY_311_URL = 'https://opendata.arcgis.com/datasets/0e3b97b1a13e4b70a0e28e6c70eb8201_0.geojson';
+// ── ArcGIS Open Data endpoints ────────────────────────────────────────────────
+const ARC_311 = 'https://opendata.arcgis.com/datasets/0e3b97b1a13e4b70a0e28e6c70eb8201_0.geojson';
+// Montgomery CAD 911 active incidents (public endpoint)
+const ARC_911 = 'https://opendata.arcgis.com/datasets/4b2bc44e96de4571a5bbc3cab9f21eca_0.geojson';
 
-// Reliable Mock Data Fallback for Pitch Demos
-const mock311Data = [
-    { id: "10234", type: "Road Obstruction", location: "Dexter Ave", status: "Action Taken", description: "Pothole repair near the Capitol." },
-    { id: "10235", type: "Utility Outage", location: "South Perry St", status: "Investigating", description: "Water pressure low reported by multiple residents." },
-    { id: "10236", type: "Traffic Signal", location: "Ann St & Zelda Rd", status: "Assigned", description: "Lights out in all directions." },
-    { id: "10237", type: "Road Obstruction", location: "Commerce St", status: "Closed", description: "Standard road closure." }
+// Category → keyword map (used to filter 311/911 data)
+const CAT_KEYWORDS: Record<string, string[]> = {
+  sinkhole:     ['sinkhole','sink hole','hole','cave','collapse'],
+  'water main': ['water main','water line','watermain','leak','burst pipe','flood'],
+  outage:       ['outage','power out','power line','electric','apc','lights out'],
+  'road closure':['closure','closed','road closed','blocked','pavement','pothole','pave'],
+};
+
+// ── Mock fallback for when ArcGIS is down ───────────────────────────────────
+const MOCK_311 = [
+  { type:'Road Obstruction', location:'Dexter Ave',     status:'Action Taken', description:'Pothole repair near Capitol.' },
+  { type:'Utility Outage',   location:'South Perry St', status:'Investigating', description:'Water pressure low.' },
+  { type:'Traffic Signal',   location:'Ann St',          status:'Assigned',     description:'Lights out in all directions.' },
+  { type:'Sinkhole Report',  location:'Mobile Hwy',      status:'Open',         description:'Resident-reported sinkhole, crew dispatched.' },
+];
+const MOCK_911 = [
+  { type:'Fire',    location:'1240 Mobile Hwy',      status:'ACTIVE', description:'Structure fire — 3 units dispatched.' },
+  { type:'Medical', location:'Oak Park Drive',        status:'ACTIVE', description:'Medical emergency — 1 unit en route.' },
+  { type:'Traffic', location:'I-85 N @ Exit 6',      status:'ACTIVE', description:'Multi-vehicle accident.' },
 ];
 
-export async function POST(request: Request) {
-    try {
-        const { rumor } = await request.json();
-
-        if (!rumor || typeof rumor !== 'string') {
-            return NextResponse.json({ error: "Rumor text is required." }, { status: 400 });
-        }
-
-        let cityData;
-        try {
-            // Attempt to Fetch Live Data
-            const res = await fetch(MONTGOMERY_311_URL, { signal: AbortSignal.timeout(3000) });
-            const rawData = await res.json();
-            if (rawData && rawData.features) {
-                cityData = rawData.features.slice(0, 50).map((f: any) => ({
-                    type: f.properties.Issue_Type,
-                    location: f.properties.Location,
-                    description: f.properties.Description,
-                    status: f.properties.Status,
-                    id: f.properties.Request_Id
-                }));
-            } else {
-                throw new Error("Invalid format");
-            }
-        } catch (e) {
-            console.warn("Live 311 fetch failed. Falling back to mock dataset for demo resilience.");
-            cityData = mock311Data;
-        }
-
-        // --- NEW BRIGHT DATA SCRAPING LAYER ---
-        // We actively scrape the web for official civic updates regarding the rumor keywords
-        const scrapedWebData = await verifyRumorWithBrightData(rumor);
-
-        const prompt = `
-        You are GumpWiser, the Civic Intelligence Engine for the City of Montgomery.
-        Your job is to verify a "Social Media Rumor" against the "Official 311 Data" AND "Live Scraped Web Data".
-
-        ## The Rumor
-        "${rumor}"
-
-        ## Official 311 Data
-        ${JSON.stringify(cityData)}
-
-        ## Live Scraped Web Data (via Bright Data)
-        "${scrapedWebData}"
-
-        ## Instructions
-        1. Compare the rumor to BOTH the 311 data and the Scraped Web Data.
-        2. If either source matches the rumor, set status to 'verified', score to 90-100, and strictly cite the source (311 or Web) in the message.
-        3. If the rumor claims something major (like a sinkhole) but neither source confirms it, set status to 'misinformation', score to 12.
-        4. If it's a minor rumor with no data, set status to 'unconfirmed', score to 50.
-        5. Return ONLY a JSON object matching the provided schema.
-        `;
-
-        try {
-            // Attempt standard Gemini 1.5 Flash Call
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const result = await model.generateContent({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    responseSchema: {
-                        type: SchemaType.OBJECT,
-                        properties: {
-                            status: { type: SchemaType.STRING },
-                            score: { type: SchemaType.INTEGER },
-                            title: { type: SchemaType.STRING },
-                            message: { type: SchemaType.STRING },
-                        },
-                        required: ["status", "score", "title", "message"],
-                    },
-                    temperature: 0.1,
-                }
-            });
-
-            const text = result.response.text();
-            if (text) {
-                return NextResponse.json(JSON.parse(text));
-            }
-            throw new Error("Empty gemini response");
-        } catch (apiError) {
-            console.warn("Gemini Live API failed (Rate limits or 404). Engaging Heuristic Mock Fallback Engine...", apiError);
-
-            // HEURISTIC FALLBACK (Guarantees the demo completes successfully if API credentials fail)
-            const lowercaseRumor = rumor.toLowerCase();
-            const matchedRecord = mock311Data.find(record =>
-                lowercaseRumor.includes(record.location.split(' ')[0].toLowerCase()) ||
-                lowercaseRumor.includes(record.type.toLowerCase())
-            );
-
-            if (matchedRecord) {
-                return NextResponse.json({
-                    status: "verified",
-                    score: 95,
-                    title: "Verified Fact",
-                    message: `Confirmed via Fallback Engine. City crews are aware of this issue at ${matchedRecord.location} (Case #${matchedRecord.id}).`
-                });
-            } else if (lowercaseRumor.includes("sinkhole") || lowercaseRumor.includes("explosion")) {
-                return NextResponse.json({
-                    status: "misinformation",
-                    score: 12,
-                    title: "Misinformation Alert",
-                    message: "No active city reports for this major incident. Likely an unverified rumor."
-                });
-            } else {
-                return NextResponse.json({
-                    status: "unconfirmed",
-                    score: 50,
-                    title: "Unconfirmed Vibe",
-                    message: "Mentioned by local sources but no official city record found yet in 311."
-                });
-            }
-        }
-    } catch (error) {
-        console.error("Critical Error in Fact Check API:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+// ── Fetch ArcGIS 311 with timeout ────────────────────────────────────────────
+async function fetch311() {
+  try {
+    const res = await fetch(ARC_311, { signal: AbortSignal.timeout(4000) });
+    const raw = await res.json();
+    if (raw?.features?.length) {
+      return raw.features.slice(0, 60).map((f: any) => ({
+        type: f.properties.Issue_Type || f.properties.RequestType || 'Unknown',
+        location: f.properties.Location || f.properties.Street || '',
+        status: f.properties.Status || f.properties.Resolution || '',
+        description: f.properties.Description || '',
+      }));
     }
+  } catch { /* fallthrough */ }
+  console.warn('[factcheck] ArcGIS 311 unavailable — using mock');
+  return MOCK_311;
+}
+
+// ── Fetch ArcGIS 911 with timeout ────────────────────────────────────────────
+async function fetch911() {
+  try {
+    const res = await fetch(ARC_911, { signal: AbortSignal.timeout(4000) });
+    const raw = await res.json();
+    if (raw?.features?.length) {
+      return raw.features.slice(0, 40).map((f: any) => ({
+        type: f.properties.IncidentType || f.properties.Nature || 'Unknown',
+        location: f.properties.Address || f.properties.Location || '',
+        status: f.properties.Status || 'ACTIVE',
+        description: f.properties.Notes || f.properties.Comment || '',
+      }));
+    }
+  } catch { /* fallthrough */ }
+  console.warn('[factcheck] ArcGIS 911 unavailable — using mock');
+  return MOCK_911;
+}
+
+// ── Filter records by category keywords ─────────────────────────────────────
+function filterByCategory(records: any[], category: string | undefined) {
+  if (!category) return records;
+  const words = CAT_KEYWORDS[category.toLowerCase()] || [category.toLowerCase()];
+  return records.filter(r =>
+    words.some(w =>
+      (r.type        || '').toLowerCase().includes(w) ||
+      (r.description || '').toLowerCase().includes(w) ||
+      (r.location    || '').toLowerCase().includes(w)
+    )
+  );
+}
+
+// ── POST /api/factcheck ──────────────────────────────────────────────────────
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const {
+      rumor         = '',
+      activeSources = ['twitter','reddit','facebook','nextdoor','311','911'],
+      category      = '',     // optional preset chip
+    } = body;
+
+    if (!rumor.trim()) {
+      return NextResponse.json({ error: 'Rumor text required.' }, { status: 400 });
+    }
+
+    // ── Fetch only the sources that are toggled on ───────────────────────────
+    const fetchingCivic   = activeSources.includes('311') || activeSources.includes('911');
+    const fetchingSocial  = ['twitter','reddit','facebook','nextdoor'].some(s => activeSources.includes(s));
+
+    const [data311, data911, brightDataSnippet] = await Promise.all([
+      activeSources.includes('311')      ? fetch311()                        : Promise.resolve(null),
+      activeSources.includes('911')      ? fetch911()                        : Promise.resolve(null),
+      fetchingSocial                     ? verifyRumorWithBrightData(rumor)  : Promise.resolve('Social sources not selected.'),
+    ]);
+
+    // Filter 311/911 by category if a chip was used
+    const filtered311 = data311 ? filterByCategory(data311, category) : null;
+    const filtered911 = data911 ? filterByCategory(data911, category) : null;
+
+    // Also scrape targeted social signals per active social source
+    const socialSignals = fetchingSocial
+      ? await scrapeSocialSignals(rumor, activeSources.filter((s: string) => ['twitter','reddit','facebook','nextdoor'].includes(s)))
+      : { volume: 0, sentiment: 'neutral', snippets: [] };
+
+    // ── Build Gemini prompt ─────────────────────────────────────────────────
+    const activeSourceNames = activeSources.map((s: string) =>
+      s === '311' ? '311 Service Requests' :
+      s === '911' ? '911 CAD Logs' :
+      s.charAt(0).toUpperCase() + s.slice(1)
+    ).join(', ');
+
+    const evidenceParts: string[] = [];
+    if (filtered311) evidenceParts.push(`## Montgomery 311 Service Requests (${filtered311.length} records)\n${JSON.stringify(filtered311.slice(0, 20))}`);
+    if (filtered911) evidenceParts.push(`## Montgomery 911 CAD Logs (${filtered911.length} incidents)\n${JSON.stringify(filtered911.slice(0, 15))}`);
+    if (fetchingSocial) {
+      evidenceParts.push(`## Bright Data Social Signals\nSentiment: ${socialSignals.sentiment}\nVolume: ${socialSignals.volume} mentions\nSnippets: ${socialSignals.snippets.slice(0,5).join(' | ')}\nWeb corroboration: ${brightDataSnippet}`);
+    }
+
+    const prompt = `You are GumpWiser — the civic intelligence engine for Montgomery, Alabama.
+Analyze the following rumor using ONLY the data sources provided (${activeSourceNames}).
+
+## The Rumor
+"${rumor}"
+${category ? `Category hint: ${category}\n` : ''}
+
+${evidenceParts.join('\n\n')}
+
+## Your Task
+1. Cross-reference the rumor text against each evidence source above.
+2. If 311 data is provided: look for open tickets, dispatched crew, or confirmed reports matching the location/type. CRITICAL INSTRUCTION: Map the 'description' field from the 311 JSON to the rumor verification logic to check for semantic matches with the claimed event.
+3. If 911 data is provided: look for active incidents matching the claimed event.
+4. If social data is provided: assess sentiment volume and whether social mentions align with the rumor.
+5. Produce a Gump-Score™ (0–100) where:
+   - 70–100 = Verified (strong official record match)
+   - 35–69  = Caution (partial or indirect evidence)
+   - 0–34   = Alert/Misinformation (no corroboration, or contradicted by official data)
+   - **CRITICAL**: If the rumor text is clearly gibberish (e.g., "ggrefger", "asdasd"), random letters, or too short to be a real claim, you MUST score it below 15 (Misinformation) and state that it is an invalid or unreadable claim.
+6. Return a concise, citizen-readable "message" explaining your reasoning in plain English.
+7. Return "dataSource" — which data source(s) actually matched (e.g. "311 Service Request #10234, 911 CAD Log").
+`;
+
+    try {
+      const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: SchemaType.OBJECT,
+            properties: {
+              status:     { type: SchemaType.STRING },   // 'verified' | 'caution' | 'misinformation'
+              score:      { type: SchemaType.INTEGER },
+              title:      { type: SchemaType.STRING },
+              message:    { type: SchemaType.STRING },
+              dataSource: { type: SchemaType.STRING },
+              socialVol:  { type: SchemaType.INTEGER },
+            },
+            required: ['status', 'score', 'title', 'message', 'dataSource'],
+          },
+          temperature: 0.1,
+        },
+      });
+
+      const text = result.response.text();
+      if (text) {
+        const parsed = JSON.parse(text);
+        return NextResponse.json({
+          ...parsed,
+          activeSources,
+          socialSignals,
+          record311Count: filtered311?.length ?? 0,
+          record911Count: filtered911?.length ?? 0,
+        });
+      }
+      throw new Error('Empty Gemini response');
+
+    } catch (apiErr) {
+      console.warn('[factcheck] Gemini call failed — heuristic fallback', apiErr);
+      return NextResponse.json(heuristicFallback(rumor, filtered311, filtered911, socialSignals, activeSources));
+    }
+
+  } catch (err) {
+    console.error('[factcheck] Critical error', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+// ── Heuristic fallback (guaranteed result even if Gemini quota exceeded) ──────
+function heuristicFallback(rumor: string, data311: any, data911: any, social: any, activeSources: string[]) {
+  const lower = rumor.toLowerCase().trim();
+  
+  // Detect gibberish (no spaces in a long string, or very short and no vowels, or repeated chars)
+  const isGibberish = lower.length < 5 || (lower.length > 5 && !lower.includes(' ')) || /([a-z])\1{3,}/.test(lower);
+
+  if (isGibberish) {
+    return {
+      status: 'misinformation',
+      score: 12,
+      title: 'Invalid Input',
+      message: 'The text provided does not appear to be a valid or readable civic claim. No analysis possible.',
+      dataSource: 'Input Validation',
+      activeSources,
+      socialSignals: { volume: 0, sentiment: 'neutral', snippets: [] },
+      record311Count: 0,
+      record911Count: 0,
+    };
+  }
+
+  const hasCivicMatch = [
+    ...(data311 || []),
+    ...(data911 || []),
+  ].some(r =>
+    lower.split(' ').some(w =>
+      w.length > 4 &&
+      ((r.location || '').toLowerCase().includes(w) ||
+       (r.description || '').toLowerCase().includes(w))
+    )
+  );
+
+  const isSensational = /sinkhole|cars falling|explosion|entire city|flooding downtown|shutdown all/i.test(rumor);
+  const hasOfficialSrc = activeSources.includes('311') || activeSources.includes('911');
+
+  let score = 50;
+  if (hasCivicMatch)    score = 82;
+  if (isSensational && !hasCivicMatch && hasOfficialSrc) score = 14;
+  if (social.volume > 50) score = Math.min(score + 8, 96);
+  if (social.sentiment === 'negative') score = Math.max(score - 10, 4);
+
+  const verdict = score >= 70 ? 'verified' : score >= 35 ? 'caution' : 'misinformation';
+  const titles  = { verified: 'Verified Fact', caution: 'Partial Signal — Caution', misinformation: 'Misinformation Alert' };
+  const msgs    = {
+    verified: `Confirmed by official city records. ${hasCivicMatch ? 'A matching incident was found in 311/911 data.' : ''} Social signal volume: ${social.volume}.`,
+    caution: `Partial evidence found. Social mentions exist but no direct 311/911 match at the exact location. Monitor before sharing.`,
+    misinformation: `No supporting evidence in official records. ${hasOfficialSrc ? 'Contradicts active 311/911 data.' : ''} High probability of exaggeration or misinformation.`,
+  };
+
+  return {
+    status: verdict,
+    score,
+    title: titles[verdict],
+    message: msgs[verdict],
+    dataSource: hasCivicMatch ? `311/911 record match` : 'No official match — heuristic engine',
+    activeSources,
+    socialSignals: social,
+    record311Count: (data311 || []).length,
+    record911Count: (data911 || []).length,
+  };
 }
