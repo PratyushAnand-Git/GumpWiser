@@ -1,221 +1,186 @@
 "use client";
 
+import { useState, useCallback, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { useState, useEffect } from 'react';
-import { Search, MapPin, AlertTriangle, CheckCircle, XCircle, Shield, Activity, Info, Loader2 } from 'lucide-react';
-import { TrendingRumor } from '@/lib/brightData';
+import Sidebar, { type ViewId }      from './Sidebar';
+import Header                        from './Header';
+import StatCards                     from './StatCards';
+import RumorAnalyzer                 from './RumorAnalyzer';
+import SocialPulse                   from './SocialPulse';
+import CityOperations                from './CityOperations';
+import LiveTicker                    from './LiveTicker';
+import FeedGrid                      from './FeedGrid';
+import SocialFeedView                from './SocialFeedView';
+import NineOneOnePulseView           from './NineOneOnePulseView';
+import WeatherAlertView              from './WeatherAlertView';
+import ReportsView311                from './ReportsView311';
+import CityTrendsView                from './CityTrendsView';
+import LeaderboardView               from './LeaderboardView';
+import SettingsView                  from './SettingsView';
+import IncidentMapFullView           from './IncidentMapFullView';
+import { ToastProvider }             from './ToastProvider';
+import { useToast }                  from './ToastProvider';
+import type { FeedItem }             from '@/lib/dashboardData';
 
-const Map = dynamic(() => import('./MapComponent'), { ssr: false });
+const MapComponent = dynamic(() => import('./MapComponent'), { ssr: false });
 
-export default function Dashboard() {
-  const [rumor, setRumor] = useState("");
-  const [isChecking, setIsChecking] = useState(false);
-  const [factCheckResult, setFactCheckResult] = useState<any>(null);
-  const [trendingRumors, setTrendingRumors] = useState<TrendingRumor[]>([]);
-  const [isLoadingTrending, setIsLoadingTrending] = useState(true);
-  const [safetyPulse, setSafetyPulse] = useState({
-    message: "Analyzing Montgomery 911 & Weather data...",
-    status: "neutral"
-  });
+const VIEW_TITLES: Record<ViewId, string> = {
+  'rumor-analyzer': 'Rumor Analyzer',
+  'social-feed':    'Live Social Feed',
+  'incident-map':   'Incident Map',
+  '911-pulse':      '911 Pulse',
+  'weather-alert':  'Weather Alert',
+  '311-reports':    '311 Reports',
+  'city-trends':    'City Trends',
+  'top-reporters':  'Top Reporters',
+  'settings':       'Settings',
+};
 
+// ─── Rumor Analyzer full page view ────────────────────────────────────────
+function RumorAnalyzerView({
+  preloadedText, extraFeedItems, onNewAnalysis, onFeedItemClick, scrollTrigger, refreshKey, onScrollConsumed
+}: {
+  preloadedText: string;
+  extraFeedItems: FeedItem[];
+  onNewAnalysis: (txt: string, verdict: string, score: number) => void;
+  onFeedItemClick: (txt: string) => void;
+  scrollTrigger: number;
+  refreshKey: number;
+  onScrollConsumed: () => void;
+}) {
+  const { toast }   = useToast();
+  const scrollRef   = useRef<HTMLDivElement>(null);
+  const analyzerRef = useRef<HTMLDivElement>(null);
+
+  // Intent-based scroll: Only scroll when scrollTrigger is updated
   useEffect(() => {
-    async function loadTrending() {
-      try {
-        const response = await fetch('/api/trending');
-        if (response.ok) {
-          const data = await response.json();
-          setTrendingRumors(data.rumors || []);
-        }
-      } catch (error) {
-        console.error("Failed to load trending rumors", error);
-      } finally {
-        setIsLoadingTrending(false);
-      }
+    if (scrollTrigger && analyzerRef.current && scrollRef.current) {
+      const top = analyzerRef.current.offsetTop - 12;
+      scrollRef.current.scrollTo({ top, behavior: 'smooth' });
+      onScrollConsumed(); // Reset the trigger immediately after use
     }
-    loadTrending();
+  }, [scrollTrigger, onScrollConsumed]);
+
+  return (
+    <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+      {/* Stats - Re-mount on refresh to trigger animations */}
+      <div style={{ marginBottom: 18 }} key={refreshKey}><StatCards /></div>
+
+      {/* Live ticker */}
+      <LiveTicker
+        extraItems={extraFeedItems}
+        label="SOCIAL PULSE LIVE"
+        onItemClick={txt => { onFeedItemClick(txt); toast('📋', 'Loaded into analyzer — hit Analyze!'); }}
+      />
+
+      {/* 4-col feed grid */}
+      <FeedGrid onItemClick={txt => { onFeedItemClick(txt); toast('📋', 'Loaded into analyzer — hit Analyze!'); }} />
+
+      {/* Scroll anchor — just above the analyzer row */}
+      <div ref={analyzerRef} />
+
+      {/* Analyzer + Social Pulse */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 296px', gap: 16, marginBottom: 20 }}>
+        <RumorAnalyzer preloadedText={preloadedText} onNewResult={onNewAnalysis} />
+        <SocialPulse key={refreshKey} />
+      </div>
+
+      {/* City Operations */}
+      <CityOperations key={refreshKey} />
+
+      {/* Map */}
+      <MapComponent key={refreshKey} />
+    </div>
+  );
+}
+
+
+// ─── Inner controller (needs ToastContext) ────────────────────────────────
+function DashboardInner() {
+  const { toast } = useToast();
+  const [activeView, setActiveView]       = useState<ViewId>('rumor-analyzer');
+  const [analyzerText, setAnalyzerText]   = useState('');
+  const [extraFeed, setExtraFeed]         = useState<FeedItem[]>([]);
+  const [refreshKey, setRefreshKey]       = useState(0);
+  const [scrollTrigger, setScrollTrigger] = useState(0);
+
+  // Global 2-minute re-verification timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshKey(prev => prev + 1);
+      toast('📡', 'Civic Data Re-verified: Syncing all intelligence nodes...');
+    }, 120000); // 2 minutes
+    return () => clearInterval(interval);
+  }, [toast]);
+
+  const handleLoadToAnalyzer = useCallback((txt: string) => {
+    setAnalyzerText(txt);
+    setActiveView('rumor-analyzer');
+    setScrollTrigger(Date.now()); // Explicitly trigger scroll intent
+    toast('📋', 'Loaded into analyzer — hit ⚡ Analyze!');
+  }, [toast]);
+
+  const consumeScrollTrigger = useCallback(() => {
+    setScrollTrigger(0);
   }, []);
 
-  const handleFactCheck = async () => {
-    if (!rumor) return;
-    setIsChecking(true);
-    setFactCheckResult(null);
+  const handleNewAnalysis = useCallback((txt: string, verdict: string, score: number) => {
+    const map: Record<string, 'v' | 'a' | 'c'> = { verified: 'v', caution: 'c', misinformation: 'a' };
+    const v = map[verdict] || 'c';
+    setExtraFeed(prev => [{
+      src: '𝕏 Twitter', dot: '#1d9bf0', time: 'now',
+      txt: txt.slice(0, 80), sc: score, v, cat: 'Analyze',
+    }, ...prev].slice(0, 20));
+  }, []);
 
-    // Check the active fact checking API
-    try {
-      const response = await fetch('/api/factcheck', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ rumor }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-
-        let icon = <AlertTriangle className="text-yellow-500 w-8 h-8" />;
-        if (data.status === 'verified') icon = <CheckCircle className="text-green-500 w-8 h-8" />;
-        else if (data.status === 'misinformation') icon = <XCircle className="text-red-500 w-8 h-8" />;
-
-        setFactCheckResult({
-          ...data,
-          icon
-        });
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsChecking(false);
-
-      // Update safety pulse randomly for demo
-      setSafetyPulse({
-        message: "Your area is generally safe. Nearest Police Station (Central) is 1.2 miles away. No active weather sirens.",
-        status: "safe"
-      });
+  const renderView = () => {
+    switch (activeView) {
+      case 'rumor-analyzer':
+        return (
+          <RumorAnalyzerView
+            preloadedText={analyzerText}
+            extraFeedItems={extraFeed}
+            onNewAnalysis={handleNewAnalysis}
+            onFeedItemClick={handleLoadToAnalyzer}
+            scrollTrigger={scrollTrigger}
+            refreshKey={refreshKey}
+            onScrollConsumed={consumeScrollTrigger}
+          />
+        );
+      case 'social-feed':    return <SocialFeedView key={refreshKey} onLoadToAnalyzer={handleLoadToAnalyzer} />;
+      case 'incident-map':   return <IncidentMapFullView key={refreshKey} />;
+      case '911-pulse':      return <NineOneOnePulseView key={refreshKey} />;
+      case 'weather-alert':  return <WeatherAlertView key={refreshKey} />;
+      case '311-reports':    return <ReportsView311 key={refreshKey} />;
+      case 'city-trends':    return <CityTrendsView key={refreshKey} />;
+      case 'top-reporters':  return <LeaderboardView key={refreshKey} />;
+      case 'settings':       return <SettingsView key={refreshKey} />;
+      default:               return null;
     }
   };
 
+
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-full md:w-96 bg-slate-900 border-r border-slate-800 flex flex-col p-6 overflow-y-auto">
-        <div className="flex items-center gap-3 mb-8">
-          <Shield className="w-8 h-8 text-blue-500" />
-          <div>
-            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">
-              GumpWiser
-            </h1>
-            <p className="text-xs text-slate-400">Civic Intelligence Platform</p>
-          </div>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f5f1ea', fontFamily: "'Figtree',sans-serif", color: '#1c1409' }}>
+      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        <Header
+          viewTitle={VIEW_TITLES[activeView]}
+          onSubmitRumor={() => { setActiveView('rumor-analyzer'); setAnalyzerText(''); }}
+        />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {renderView()}
         </div>
-
-        {/* Fact-Checker Input */}
-        <div className="mb-8">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <Search className="w-4 h-4" /> Fact Check a Rumor
-          </h2>
-          <div className="space-y-3">
-            <textarea
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none transition-all placeholder-slate-500"
-              rows={4}
-              placeholder="e.g. Huge sinkhole on Commerce Street!"
-              value={rumor}
-              onChange={(e) => setRumor(e.target.value)}
-            />
-            <button
-              onClick={handleFactCheck}
-              disabled={isChecking || !rumor}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium py-2.5 px-4 rounded-lg transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(59,130,246,0.2)]"
-            >
-              {isChecking ? "Sensing Truth..." : "Check Reality"}
-            </button>
-          </div>
-        </div>
-
-        {/* Dynamic Fact Check Status Card */}
-        {factCheckResult && (
-          <div className={`p-5 rounded-xl border mb-8 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4 shadow-lg ${factCheckResult.status === 'verified' ? 'bg-green-500/10 border-green-500/30' :
-              factCheckResult.status === 'misinformation' ? 'bg-red-500/10 border-red-500/30' :
-                'bg-yellow-500/10 border-yellow-500/30'
-            }`}>
-            <div className="flex items-start gap-4">
-              <div className="mt-1">
-                {factCheckResult.icon}
-              </div>
-              <div>
-                <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
-                  {factCheckResult.title}
-                </h3>
-                <p className="text-sm text-slate-300 mb-3 leading-relaxed">
-                  {factCheckResult.message}
-                </p>
-                <div className="flex items-center gap-2">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Gump-Score</div>
-                  <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${factCheckResult.score > 80 ? 'bg-green-500' :
-                          factCheckResult.score > 30 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
-                      style={{ width: `${factCheckResult.score}%` }}
-                    />
-                  </div>
-                  <div className="text-sm font-bold">{factCheckResult.score}%</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Trending Rumors */}
-        {!factCheckResult && (
-          <div className="mb-8">
-            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <Activity className="w-4 h-4" /> Trending in Montgomery
-            </h2>
-
-            {isLoadingTrending ? (
-              <div className="flex items-center justify-center p-8 gap-3 text-slate-500">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span className="text-sm">Fetching live Bright Data API...</span>
-              </div>
-            ) : trendingRumors.length === 0 ? (
-              <div className="text-sm text-slate-500 p-4 border border-slate-800 rounded-lg text-center">
-                No active rumors sensed.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {trendingRumors.map(tweet => (
-                  <div
-                    key={tweet.id}
-                    className="bg-slate-950 border border-slate-800/50 p-3 rounded-lg text-sm cursor-pointer hover:border-blue-500/50 transition-colors group"
-                    onClick={() => setRumor(tweet.text)}
-                  >
-                    <p className="text-slate-300 group-hover:text-slate-200 transition-colors">"{tweet.text}"</p>
-                    <div className="text-xs text-slate-500 mt-2 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> {tweet.source}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="mt-auto pt-6 border-t border-slate-800/50">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <Info className="w-4 h-4" /> Powered by Gemini 3 & Bright Data
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Area (Map & Safety Pulse) */}
-      <div className="flex-1 flex flex-col relative bg-slate-950">
-
-        {/* The Safety Pulse Overlay */}
-        <div className="absolute top-6 right-6 left-6 z-[1000] pointer-events-none">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 p-4 rounded-xl shadow-2xl pointer-events-auto max-w-lg ml-auto">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-blue-500/20 rounded-lg text-blue-400">
-                <Activity className="w-6 h-6 animate-pulse" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-200 mb-1 flex items-center gap-2">
-                  Neighborhood Safety Pulse
-                </h3>
-                <p className="text-sm text-slate-400 leading-relaxed">
-                  {safetyPulse.message}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Map Container */}
-        <div className="flex-1 w-full h-full relative z-[1]">
-          <Map />
-        </div>
-
       </div>
     </div>
+  );
+}
+
+// ─── Root — wraps everything in ToastProvider ──────────────────────────────
+export default function Dashboard() {
+  return (
+    <ToastProvider>
+      <DashboardInner />
+    </ToastProvider>
   );
 }
