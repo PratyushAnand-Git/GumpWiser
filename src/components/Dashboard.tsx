@@ -38,14 +38,13 @@ const VIEW_TITLES: Record<ViewId, string> = {
 
 // ─── Rumor Analyzer full page view ────────────────────────────────────────
 function RumorAnalyzerView({
-  preloadedText, extraFeedItems, onNewAnalysis, onFeedItemClick, scrollTrigger, refreshKey, onScrollConsumed
+  preloadedText, extraFeedItems, onNewAnalysis, onFeedItemClick, scrollTrigger, onScrollConsumed
 }: {
   preloadedText: string;
   extraFeedItems: FeedItem[];
   onNewAnalysis: (txt: string, verdict: string, score: number) => void;
   onFeedItemClick: (txt: string) => void;
   scrollTrigger: number;
-  refreshKey: number;
   onScrollConsumed: () => void;
 }) {
   const { toast }   = useToast();
@@ -63,7 +62,11 @@ function RumorAnalyzerView({
 
   return (
     <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-      {/* Stats - Re-mount on refresh to trigger animations */}
+      {/* 
+        NOTE: We avoid using 'key={refreshKey}' on the components below. 
+        Hard remounting components with CSS animations can cause DOM duplication 
+        vulnerabilities in some browsers. Instead, we let components update in-place.
+      */}
       <div style={{ marginBottom: 18 }}><StatCards /></div>
 
       {/* Live ticker */}
@@ -143,18 +146,17 @@ function DashboardInner() {
             onNewAnalysis={handleNewAnalysis}
             onFeedItemClick={handleLoadToAnalyzer}
             scrollTrigger={scrollTrigger}
-            refreshKey={refreshKey}
             onScrollConsumed={consumeScrollTrigger}
           />
         );
-      case 'social-feed':    return <SocialFeedView key={refreshKey} onLoadToAnalyzer={handleLoadToAnalyzer} />;
-      case 'incident-map':   return <IncidentMapFullView key={refreshKey} />;
-      case '911-pulse':      return <NineOneOnePulseView key={refreshKey} />;
-      case 'weather-alert':  return <WeatherAlertView key={refreshKey} />;
-      case '311-reports':    return <ReportsView311 key={refreshKey} />;
-      case 'city-trends':    return <CityTrendsView key={refreshKey} />;
-      case 'top-reporters':  return <LeaderboardView key={refreshKey} />;
-      case 'settings':       return <SettingsView key={refreshKey} />;
+      case 'social-feed':    return <SocialFeedView onLoadToAnalyzer={handleLoadToAnalyzer} />;
+      case 'incident-map':   return <IncidentMapFullView />;
+      case '911-pulse':      return <NineOneOnePulseView />;
+      case 'weather-alert':  return <WeatherAlertView />;
+      case '311-reports':    return <ReportsView311 />;
+      case 'city-trends':    return <CityTrendsView />;
+      case 'top-reporters':  return <LeaderboardView />;
+      case 'settings':       return <SettingsView />;
       default:               return null;
     }
   };
