@@ -82,14 +82,14 @@ function RumorAnalyzerView({
       {/* Analyzer + Social Pulse */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 296px', gap: 16, marginBottom: 20 }}>
         <RumorAnalyzer preloadedText={preloadedText} onNewResult={onNewAnalysis} />
-        <SocialPulse key={refreshKey} />
+        <SocialPulse />
       </div>
 
       {/* City Operations */}
-      <CityOperations key={refreshKey} />
+      <CityOperations />
 
       {/* Map */}
-      <MapComponent key={refreshKey} />
+      <MapComponent />
     </div>
   );
 }
