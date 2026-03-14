@@ -166,7 +166,7 @@ function DashboardInner() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
         <Header
           viewTitle={VIEW_TITLES[activeView]}
-          onSubmitRumor={() => { setActiveView('rumor-analyzer'); setAnalyzerText(''); }}
+          onSubmitRumor={() => { setActiveView('rumor-analyzer'); setAnalyzerText(''); setScrollTrigger(Date.now()); }}
         />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {renderView()}
