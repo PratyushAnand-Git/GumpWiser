@@ -61,6 +61,7 @@ export default function Header({ viewTitle = 'GumpWiser', onSubmitRumor }: Heade
       {/* Right actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', position: 'relative' }} ref={dropdownRef}>
         <button
+          onClick={() => window.location.reload()}
           style={{
             background: 'none', border: '1.5px solid #ddd8ce', borderRadius: 24,
             padding: '6px 14px', fontFamily: "'Figtree', sans-serif", fontSize: 13, fontWeight: 600,

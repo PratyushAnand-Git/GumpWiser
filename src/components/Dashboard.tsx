@@ -64,7 +64,7 @@ function RumorAnalyzerView({
   return (
     <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
       {/* Stats - Re-mount on refresh to trigger animations */}
-      <div style={{ marginBottom: 18 }} key={refreshKey}><StatCards /></div>
+      <div style={{ marginBottom: 18 }}><StatCards /></div>
 
       {/* Live ticker */}
       <LiveTicker
