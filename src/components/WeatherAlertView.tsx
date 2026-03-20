@@ -91,7 +91,7 @@ export default function WeatherAlertView() {
     ico: getEmoji(h.condition.text),
     temp: `${Math.round(h.temp_f)}°`,
     alert: h.condition.text.toLowerCase().includes('thunder')
-  })) : MOCK_HOURLY;
+  })) : (loading ? Array(12).fill({ t: '—', ico: '...', temp: '—' }) : MOCK_HOURLY);
 
   const displayDaily = forecast ? forecast.forecastday.map(d => ({
     d: new Date(d.date).toLocaleDateString([], { weekday: 'short' }),
@@ -99,7 +99,7 @@ export default function WeatherAlertView() {
     desc: d.day.condition.text,
     hi: `${Math.round(d.day.maxtemp_f)}°`,
     lo: `${Math.round(d.day.mintemp_f)}°`
-  })) : MOCK_DAILY;
+  })) : (loading ? Array(7).fill({ d: '—', ico: '...', desc: 'Loading forecast...', hi: '—', lo: '—' }) : MOCK_DAILY);
 
   const alerts = data?.alerts?.alert || [];
 
@@ -110,7 +110,7 @@ export default function WeatherAlertView() {
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: "'Fraunces',serif", fontSize: 20, fontWeight: 900, marginBottom: 2 }}>Weather Alert</div>
           <div style={{ fontSize: 12, color: '#8a7c6a' }}>
-            Montgomery AL · {data ? 'Real-time API' : 'NWS data'} · Hourly forecast + civic impact
+            Montgomery AL · {loading ? 'Fetching...' : (data ? 'Real-time API' : 'NWS data')} · Hourly forecast + civic impact
           </div>
         </div>
         <div style={{ display: 'flex', gap: 7 }}>
@@ -118,7 +118,7 @@ export default function WeatherAlertView() {
             {alerts.length > 0 ? `${alerts.length} Active Alerts` : 'No Active Alerts'}
           </span>
           <span style={{ ...pill('rgba(14,165,233,.12)', '#0099dd') }}>
-            {current ? `${Math.round(current.temp_f)}°F ${current.condition.text}` : '74°F Partly Cloudy'}
+            {current ? `${Math.round(current.temp_f)}°F ${current.condition.text}` : (loading ? '—°F Fetching...' : '74°F Partly Cloudy')}
           </span>
         </div>
       </div>
@@ -131,26 +131,26 @@ export default function WeatherAlertView() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
               <div>
                 <div style={{ fontFamily: "'Fraunces',serif", fontSize: 48, fontWeight: 900, lineHeight: 1 }}>
-                  {current ? `${Math.round(current.temp_f)}°F` : '74°F'}
+                  {current ? `${Math.round(current.temp_f)}°F` : (loading ? '—°F' : '74°F')}
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
-                  {current ? `${current.condition.text} — Montgomery, AL` : 'Partly Cloudy — Montgomery, AL'}
+                  {current ? `${current.condition.text} — Montgomery, AL` : (loading ? 'Fetching condition...' : 'Partly Cloudy — Montgomery, AL')}
                 </div>
                 <div style={{ fontSize: 12, color: '#8a7c6a' }}>
                   {current 
                     ? `Feels like ${Math.round(current.feelslike_f)}° · High ${Math.round(forecast?.forecastday[0].day.maxtemp_f || 0)}° · Low ${Math.round(forecast?.forecastday[0].day.mintemp_f || 0)}°`
-                    : 'Feels like 76° · High 81° · Low 62°'}
+                    : (loading ? 'Feels like —° · High —° · Low —°' : 'Feels like 76° · High 81° · Low 62°')}
                 </div>
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
               {[
-                { l: 'Humidity',    v: current ? `${current.humidity}%` : '62%',       c: '#1c1409' },
-                { l: 'Wind',        v: current ? `${current.wind_dir} ${Math.round(current.wind_mph)} mph` : 'NW 8 mph',  c: '#0099dd' },
-                { l: 'UV Index',    v: current ? `${current.uv} — ${current.uv > 5 ? 'High' : 'Moderate'}` : '6 — High',  c: '#f0900a' },
-                { l: 'Visibility',  v: current ? `${current.vis_miles} mi` : '10 mi',     c: '#1c1409' },
-                { l: 'Pressure',    v: current ? `${current.pressure_in} inHg` : '30.1 inHg', c: '#1c1409' },
-                { l: 'Dew Point',   v: current ? `${Math.round(current.dewpoint_f)}°F` : '58°F',      c: '#1c1409' },
+                { l: 'Humidity',    v: current ? `${current.humidity}%` : (loading ? '—' : '62%'),       c: '#1c1409' },
+                { l: 'Wind',        v: current ? `${current.wind_dir} ${Math.round(current.wind_mph)} mph` : (loading ? '—' : 'NW 8 mph'),  c: '#0099dd' },
+                { l: 'UV Index',    v: current ? `${current.uv} — ${current.uv > 5 ? 'High' : 'Moderate'}` : (loading ? '—' : '6 — High'),  c: '#f0900a' },
+                { l: 'Visibility',  v: current ? `${current.vis_miles} mi` : (loading ? '—' : '10 mi'),     c: '#1c1409' },
+                { l: 'Pressure',    v: current ? `${current.pressure_in} inHg` : (loading ? '—' : '30.1 inHg'), c: '#1c1409' },
+                { l: 'Dew Point',   v: current ? `${Math.round(current.dewpoint_f)}°F` : (loading ? '—' : '58°F'),      c: '#1c1409' },
               ].map(({ l, v, c }) => (
                 <div key={l} style={tile}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: '#8a7c6a', fontFamily: "'Fira Code',monospace", textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 2 }}>{l}</div>
@@ -196,11 +196,11 @@ export default function WeatherAlertView() {
           <div style={card}>
             <div style={{ fontFamily: "'Fraunces',serif", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Civic Weather Impact</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {(alerts.length > 0 ? alerts : [
+              {(alerts.length > 0 ? alerts : (loading ? [] : [
                 { event: 'Thunderstorm Tonight', desc: 'Expect 311 surge — drainage, fallen trees, power outages', category: 'Met' },
                 { event: 'Wet Roads 10PM+',      desc: 'Increased traffic incident risk on I-85 and Mobile Hwy',  category: 'Met' },
                 { event: 'Outdoor Events Clear',  desc: 'Daytime activities OK — Oak Park cleanup on schedule',    category: 'Civic'   },
-              ]).slice(0, 3).map((a: any, idx) => {
+              ])).slice(0, 3).map((a: any, idx) => {
                 const isReal = !!a.event;
                 const type = a.category?.includes('Met') ? 'warn' : a.category?.includes('Civic') ? 'ok' : 'info';
                 const bg = type === 'warn' ? 'rgba(255,68,34,.07)' : type === 'info' ? 'rgba(14,165,233,.07)' : 'rgba(0,153,128,.07)';
@@ -223,21 +223,21 @@ export default function WeatherAlertView() {
             <div style={{ fontFamily: "'Fraunces',serif", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>🌡️ Air Quality</div>
             <div style={{ textAlign: 'center', padding: '12px 0' }}>
               <div style={{ fontFamily: "'Fraunces',serif", fontSize: 42, fontWeight: 900, color: current?.air_quality["us-epa-index"] && current?.air_quality["us-epa-index"] <= 2 ? '#009980' : '#f0900a' }}>
-                {current ? Math.round(current.air_quality.pm2_5) : '42'}
+                {current ? Math.round(current.air_quality.pm2_5) : (loading ? '—' : '42')}
               </div>
               <div style={{ fontSize: 11, fontFamily: "'Fira Code',monospace", color: current?.air_quality["us-epa-index"] && current?.air_quality["us-epa-index"] <= 2 ? '#009980' : '#f0900a', fontWeight: 700, marginBottom: 6 }}>
-                AQI — {current ? (current.air_quality["us-epa-index"] <= 2 ? 'GOOD' : 'MODERATE') : 'GOOD'}
+                AQI — {current ? (current.air_quality["us-epa-index"] <= 2 ? 'GOOD' : 'MODERATE') : (loading ? 'Fetching...' : 'GOOD')}
               </div>
               <div style={{ fontSize: 12, color: '#8a7c6a', lineHeight: 1.5 }}>
-                {current ? "Air quality measurements from Montgomery sensors." : "Air quality is satisfactory. No health concerns for the general population."}
+                {current ? "Air quality measurements from Montgomery sensors." : (loading ? 'Loading sensor data...' : "Air quality is satisfactory. No health concerns for the general population.")}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
               {[
-                { l: 'PM2.5', v: current ? `${current.air_quality.pm2_5.toFixed(1)} µg/m³` : '6 µg/m³', c: (current?.air_quality?.["us-epa-index"] ?? 0) <= 2 ? '#009980' : '#1c1409' },
-                { l: 'Ozone', v: current ? `${current.air_quality.o3.toFixed(1)} ppb` : '38 ppb', c: '#1c1409' },
-                { l: 'NO₂', v: current ? `${current.air_quality.no2.toFixed(1)} ppb` : '12 ppb', c: '#1c1409' },
-                { l: 'CO', v: current ? `${current.air_quality.co.toFixed(1)} ppm` : '0.3 ppm', c: '#1c1409' }
+                { l: 'PM2.5', v: current ? `${current.air_quality.pm2_5.toFixed(1)} µg/m³` : (loading ? '—' : '6 µg/m³'), c: (current?.air_quality?.["us-epa-index"] ?? 0) <= 2 ? '#009980' : '#1c1409' },
+                { l: 'Ozone', v: current ? `${current.air_quality.o3.toFixed(1)} ppb` : (loading ? '—' : '38 ppb'), c: '#1c1409' },
+                { l: 'NO₂', v: current ? `${current.air_quality.no2.toFixed(1)} ppb` : (loading ? '—' : '12 ppb'), c: '#1c1409' },
+                { l: 'CO', v: current ? `${current.air_quality.co.toFixed(1)} ppm` : (loading ? '—' : '0.3 ppm'), c: '#1c1409' }
               ].map(({ l, v, c }) => (
                 <div key={l} style={tile}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: '#8a7c6a', fontFamily: "'Fira Code',monospace", textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
