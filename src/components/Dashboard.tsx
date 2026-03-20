@@ -169,6 +169,7 @@ function DashboardInner() {
         <Header
           viewTitle={VIEW_TITLES[activeView]}
           onSubmitRumor={() => { setActiveView('rumor-analyzer'); setAnalyzerText(''); setScrollTrigger(Date.now()); }}
+          onSearch={handleLoadToAnalyzer}
         />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {renderView()}

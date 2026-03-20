@@ -5,11 +5,13 @@ import { getSessionProfile, logoutUser, type UserAccount } from '@/lib/auth';
 interface HeaderProps {
   viewTitle?: string;
   onSubmitRumor?: () => void;
+  onSearch?: (text: string) => void;
 }
 
-export default function Header({ viewTitle = 'GumpWiser', onSubmitRumor }: HeaderProps) {
+export default function Header({ viewTitle = 'GumpWiser', onSubmitRumor, onSearch }: HeaderProps) {
   const [profile, setProfile] = useState<UserAccount | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [searchText, setSearchText] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +48,14 @@ export default function Header({ viewTitle = 'GumpWiser', onSubmitRumor }: Heade
         <div style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#8a7c6a', fontSize: 14 }}>🔎</div>
         <input
           type="text"
+          value={searchText}
+          onChange={e => setSearchText(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && searchText.trim() && onSearch) {
+              onSearch(searchText.trim());
+              setSearchText('');
+            }
+          }}
           style={{
             width: '100%', paddingLeft: 34, paddingRight: 14, paddingTop: 7, paddingBottom: 7,
             background: '#f5f1ea', border: '1.5px solid #ebe6dc', borderRadius: 24,
