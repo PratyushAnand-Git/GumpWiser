@@ -112,11 +112,6 @@ export default function WeatherAlertView() {
           <div style={{ fontSize: 12, color: '#8a7c6a' }}>
             Montgomery AL · {data ? 'Real-time API' : 'NWS data'} · Hourly forecast + civic impact
           </div>
-          {error && (
-            <div style={{ fontSize: 10, color: '#ff4422', marginTop: 4, fontFamily: "'Fira Code',monospace" }}>
-              ⚠️ {error} {diagnostics ? `(Key Exists: ${diagnostics.key_exists}, Placeholder: ${diagnostics.key_placeholder})` : ''}
-            </div>
-          )}
         </div>
         <div style={{ display: 'flex', gap: 7 }}>
           <span style={{ ...pill(alerts.length > 0 ? '#fee2e2' : '#d1fae5', alerts.length > 0 ? '#991b1b' : '#065f46') }}>
