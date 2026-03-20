@@ -34,6 +34,7 @@ GumpWiser uses a layered architecture to ensure a robust, "bulletproof" experien
    \`\`\`env
    BRIGHTDATA_API_TOKEN=your_token
    GEMINI_API_KEY=your_key
+   WEATHER_API_KEY=your_weatherapi_key
    \`\`\`
 4. Run the development server:
    \`\`\`bash
