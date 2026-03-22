@@ -21,6 +21,7 @@ import IncidentMapFullView           from './IncidentMapFullView';
 import { ToastProvider }             from './ToastProvider';
 import { useToast }                  from './ToastProvider';
 import type { FeedItem }             from '@/lib/dashboardData';
+import type { WeatherData }          from '@/lib/weather';
 
 const MapComponent = dynamic(() => import('./MapComponent'), { ssr: false });
 
@@ -107,6 +108,35 @@ function DashboardInner() {
   const [refreshKey, setRefreshKey]       = useState(0);
   const [scrollTrigger, setScrollTrigger] = useState(0);
 
+  // Shared Weather State
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [isWeatherLoading, setIsWeatherLoading] = useState(true);
+
+  const fetchSharedWeather = useCallback(async (silent = false) => {
+    if (!silent) setIsWeatherLoading(true);
+    try {
+      const res = await fetch('/api/weather');
+      const json = await res.json();
+      if (res.ok) setWeatherData(json);
+    } catch (err) {
+      console.error("Shared weather fetch fail:", err);
+    } finally {
+      setIsWeatherLoading(false);
+    }
+  }, []);
+
+  // Eager load on mount
+  useEffect(() => {
+    fetchSharedWeather();
+  }, [fetchSharedWeather]);
+
+  // Background refresh when weather view is selected
+  useEffect(() => {
+    if (activeView === 'weather-alert') {
+      fetchSharedWeather(true); // Silent refresh
+    }
+  }, [activeView, fetchSharedWeather]);
+
   // Global 2-minute re-verification timer
   useEffect(() => {
     const interval = setInterval(() => {
@@ -152,7 +182,7 @@ function DashboardInner() {
       case 'social-feed':    return <SocialFeedView onLoadToAnalyzer={handleLoadToAnalyzer} />;
       case 'incident-map':   return <IncidentMapFullView />;
       case '911-pulse':      return <NineOneOnePulseView />;
-      case 'weather-alert':  return <WeatherAlertView />;
+      case 'weather-alert':  return null; // Handled separately for seamless transition
       case '311-reports':    return <ReportsView311 />;
       case 'city-trends':    return <CityTrendsView />;
       case 'top-reporters':  return <LeaderboardView />;
@@ -171,8 +201,23 @@ function DashboardInner() {
           onSubmitRumor={() => { setActiveView('rumor-analyzer'); setAnalyzerText(''); setScrollTrigger(Date.now()); }}
           onSearch={handleLoadToAnalyzer}
         />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {renderView()}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+          {/* Persistent Weather View for truly seamless instant transition */}
+          <div style={{ 
+            display: activeView === 'weather-alert' ? 'contents' : 'none',
+            position: 'absolute', inset: 0, zIndex: activeView === 'weather-alert' ? 1 : -1 
+          }}>
+            <WeatherAlertView data={weatherData} loading={isWeatherLoading} />
+          </div>
+
+          <div style={{ 
+            flex: 1, 
+            display: activeView === 'weather-alert' ? 'none' : 'flex',
+            flexDirection: 'column', 
+            overflow: 'hidden' 
+          }}>
+            {renderView()}
+          </div>
         </div>
       </div>
     </div>

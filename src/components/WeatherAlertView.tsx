@@ -57,31 +57,14 @@ const MOCK_DAILY = [
   { d: 'Tue',   ico: '🌤️', desc: 'Partly Cloudy',          hi: '80°', lo: '62°' },
 ];
 
-export default function WeatherAlertView() {
-  const [data, setData] = useState<WeatherData | null>(null);
-  const [loading, setLoading] = useState(true);
+interface WeatherAlertViewProps {
+  data: WeatherData | null;
+  loading: boolean;
+}
+
+export default function WeatherAlertView({ data, loading }: WeatherAlertViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<any>(null);
-
-  useEffect(() => {
-    async function init() {
-      try {
-        const res = await fetch('/api/weather');
-        const json = await res.json();
-        if (res.ok) {
-          setData(json);
-        } else {
-          setError(json.error || 'Failed to fetch');
-          setDiagnostics(json.diagnostics);
-        }
-      } catch (err) {
-        console.error("Failed to fetch from API route:", err);
-        setError('Network Error');
-      }
-      setLoading(false);
-    }
-    init();
-  }, []);
 
   const current = data?.current;
   const forecast = data?.forecast;
